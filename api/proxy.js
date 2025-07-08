@@ -1,74 +1,44 @@
-// Vercel Serverless Functionとして動作させるためのデフォルトエクスポート
-export default async function handler(req, res) {
-  // --- CORSヘッダーの設定 ---
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  // --- ユーティリティ関数 ---
-  async function getInvidiousInstances() {
-    try {
-      const response = await fetch('https://hiracmc.github.io/pt/assets/inv.json');
-      if (!response.ok) throw new Error(`Failed to fetch instance list: ${response.statusText}`);
-      const instances = await response.json();
-      if (!Array.isArray(instances)) throw new Error('Fetched data is not an array of instances.');
-      return "https://cal1.iv.ggtyler.dev";
-    } catch (error) {
-      console.error("Error in getInvidiousInstances:", error);
-      return [];
-    }
-  }
-
-  async function findFastestInstance(instances) {
-    const checkPromises = instances.map(instanceUrl => {
-      return new Promise(async (resolve) => {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3000);
-          const startTime = Date.now();
-          const response = await fetch(`${instanceUrl}/api/v1/videos/1DcgczDzQPk`, { signal: controller.signal });
-          clearTimeout(timeoutId);
-          if (response.ok) {
-            const duration = Date.now() - startTime;
-            resolve({ url: instanceUrl, duration, status: 'fulfilled' });
-            console.log(`${instanceUrl} good`)
-          } else {
-            resolve({ url: instanceUrl, status: 'rejected', reason: 'Not OK' });
-          }
-        } catch (error) {
-          resolve({ url: instanceUrl, status: 'rejected', reason: error.name });
-          alert(`${instanceUrl} bad`)
-        }
-      });
-    });
-
-    const results = await Promise.all(checkPromises);
-    const successfulInstances = results
-      .filter(result => result.status === 'fulfilled')
-      .sort((a, b) => a.duration - b.duration);
-
-    if (successfulInstances.length > 0) {
-      console.log(`Fastest instance: ${successfulInstances[0].url} (${successfulInstances[0].duration}ms)`);
-      return successfulInstances[0].url;
-    }
-    return null;
-  }
-
-  // --- メインロジック ---
+  async function fetchInstances() {
   try {
-    const { type, id } = req.query;
-    if (!type || !id) return res.status(400).json({ error: 'Missing required query parameters: "type" and "id"' });
+    const response = await fetch('https://hiracmc.github.io/pt/assets/inv.json');
+    return await response.json();
+  } catch (error) {
+    console.error('インスタンスリストの取得に失敗しました:', error);
+    return [];
+  }
+}
 
-    const instances = await getInvidiousInstances();
-    if (instances.length === 0) return res.status(503).json({ error: 'Could not retrieve Invidious instance list.' });
+// 各インスタンスの応答時間をチェックする関数
+async function checkInstanceSpeed(instance) {
+  const startTime = Date.now();
+  try {
+    const response = await fetch(`https://${instance}/api/v1/videos/Jn8gHsEuULY`, { method: 'HEAD' });
+    if (response.ok) {
+      return { instance, time: Date.now() - startTime };
+    }
+  } catch (error) {
+    // エラーの場合は無視
+  }
+  return { instance, time: Infinity };
+}
 
-    const fastestInstance = await findFastestInstance(instances);
-    if (!fastestInstance) return res.status(503).json({ error: 'No available Invidious instances found.' });
+// 最速のインスタンスを見つける関数
+async function findFastestInstance() {
+  const instances = await fetchInstances();
+  const results = await Promise.all(instances.map(checkInstanceSpeed));
+  const fastest = results.reduce((min, current) => (current.time < min.time ? current : min));
+  return fastest.instance;
+}
 
+
+export default async function handler(req, res) {
+let server = '';
+findFastestInstance().then(fastestInstance => {
+  server = fastestInstance;
+  console.log('最速のインスタンス:', server);
+}).catch(error => {
+  console.error('エラーが発生しました:', error);
+});
     let apiUrl;
     const encodedId = encodeURIComponent(id);
     switch (type) {
