@@ -35,6 +35,7 @@ export default async function handler(req, res) {
           if (response.ok) {
             const duration = Date.now() - startTime;
             resolve({ url: instanceUrl, duration, status: 'fulfilled' });
+            console.log(`${instanceUrl} good`)
           } else {
             resolve({ url: instanceUrl, status: 'rejected', reason: 'Not OK' });
           }
