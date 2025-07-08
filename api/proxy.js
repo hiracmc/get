@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       if (!response.ok) throw new Error(`Failed to fetch instance list: ${response.statusText}`);
       const instances = await response.json();
       if (!Array.isArray(instances)) throw new Error('Fetched data is not an array of instances.');
-      return instances;
+      return "https://cal1.iv.ggtyler.dev";
     } catch (error) {
       console.error("Error in getInvidiousInstances:", error);
       return [];
